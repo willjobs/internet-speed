@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 import requests
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -69,6 +71,7 @@ def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
         f.write(data)
 
     try:
+        logger.info(f"Uploading to dropbox at {dropbox_file}")
         dbx = dropbox.Dropbox(
             app_key=config["DROPBOX_APP_KEY"],
             app_secret=config["DROPBOX_APP_SECRET"],
@@ -77,8 +80,15 @@ def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
         with open(local_file, "rb") as f:
             _ = dbx.files_upload(f.read(), dropbox_file, mode=dropbox.files.WriteMode("overwrite"))
 
+        log_file = [h for h in logger.handlers if isinstance(h, logging.FileHandler)][0].baseFilename
+        log_file_dropbox = os.path.join(os.path.dirname(dropbox_file), os.path.basename(log_file))
+        logger.info(f"Uploading log file to dropbox at {log_file_dropbox}")
+        with open(log_file, "rb") as f:
+            _ = dbx.files_upload(f.read(), log_file_dropbox, mode=dropbox.files.WriteMode("overwrite"))
+
     except Exception as e:
         logger.error(f"Failed to upload file: {e}")
+        logger.error(f"\n{traceback.format_exc()}")
 
 
 if __name__ == "__main__":
