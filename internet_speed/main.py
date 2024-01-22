@@ -1,5 +1,6 @@
+import json
 import logging
-import socket
+import requests
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import dropbox
 from dotenv import dotenv_values
 from speedtest import Speedtest
 
-DROPBOX_API_KEY = dotenv_values()["DROPBOX_API_KEY"]
+config = dotenv_values()
 DATA_FILE_NAME = "speed_tests.txt"
 DROPBOX_FILE = f"/{DATA_FILE_NAME}"
 
@@ -35,7 +36,12 @@ def setup_logger():
 
 
 def get_my_ip() -> str:
-    return socket.gethostbyname(socket.gethostname())
+    return requests.get('https://api.ipify.org').content.decode('utf8')
+
+
+def get_ip_info(ip_address: str) -> str:
+    ip_info = json.loads(requests.get(f"https://ipinfo.io/{ip_address}?token={config['IPINFO_API_KEY']}").content.decode("utf8"))
+    return f"{ip_info['city']}, {ip_info['org']}"
 
 
 def get_speed() -> str:
@@ -63,9 +69,13 @@ def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
         f.write(data)
 
     try:
-        d = dropbox.Dropbox(DROPBOX_API_KEY)
+        dbx = dropbox.Dropbox(
+            app_key=config["DROPBOX_APP_KEY"],
+            app_secret=config["DROPBOX_APP_SECRET"],
+            oauth2_refresh_token=config["DROPBOX_REFRESH_TOKEN"],
+        )
         with open(local_file, "rb") as f:
-            _ = d.files_upload(f.read(), dropbox_file, mode=dropbox.files.WriteMode("overwrite"))
+            _ = dbx.files_upload(f.read(), dropbox_file, mode=dropbox.files.WriteMode("overwrite"))
 
     except Exception as e:
         logger.error(f"Failed to upload file: {e}")
@@ -74,9 +84,10 @@ def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
 if __name__ == "__main__":
     setup_logger()
     ip = get_my_ip()
+    ip_info = get_ip_info(ip)
     cur_time = get_datetime()
     test_results = get_speed()
-    data = f"{cur_time}  |  {ip}  |  {test_results}\n"
+    data = f"{cur_time}  |  {ip}  |  {ip_info}  |  {test_results}\n"
     logger.info(f"Saving the following data: {data.strip()}")
     update_dropbox_file(data, LOCAL_FILE, DROPBOX_FILE)
     logger.info("Done!\n")
