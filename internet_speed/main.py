@@ -54,7 +54,7 @@ def get_ip_info(ip_address: str) -> str:
 
 
 def get_speed() -> str:
-    s = Speedtest()
+    s = Speedtest(secure=True)
     logger.info("Running download test...")
     download_bps = s.download()     # Getting download speed
     download_mbps = round(download_bps / 10**6, 1)  # Mbps (bits, not bytes)
@@ -134,13 +134,19 @@ def main():
         logger.info("Done!\n")
         return
 
-    ip = get_my_ip()
-    ip_info = get_ip_info(ip)
-    cur_time = get_datetime()
-    test_results = get_speed()
-    data = f"{cur_time}  |  {ip}  |  {ip_info}  |  {test_results}\n"
-    logger.info(f"Saving the following data: {data.strip()}")
-    update_dropbox_file(data, LOCAL_FILE, DROPBOX_DATA_FILE)
+    try:
+        ip = get_my_ip()
+        ip_info = get_ip_info(ip)
+        cur_time = get_datetime()
+        test_results = get_speed()
+        data = f"{cur_time}  |  {ip}  |  {ip_info}  |  {test_results}\n"
+        logger.info(f"Saving the following data: {data.strip()}")
+        update_dropbox_file(data, LOCAL_FILE, DROPBOX_DATA_FILE)
+
+    except Exception as e:
+        logger.error(f"Error during runtime: {e}")
+        logger.error(f"\n{traceback.format_exc()}")
+
     logger.info("Done!\n")
 
 
