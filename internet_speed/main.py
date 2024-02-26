@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import requests
+import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,13 @@ from speedtest import Speedtest
 
 config = dotenv_values()
 DATA_FILE_NAME = "speed_tests.txt"
-DROPBOX_FILE = f"/{DATA_FILE_NAME}"
+DROPBOX_DIR = "/internet_speed"
+DROPBOX_DATA_FILE = f"{DROPBOX_DIR}/{DATA_FILE_NAME}"
+
+# We check for this file before doing anything else. If it doesn't exist, or we can't reach it,
+# we exit. This file is used as a way to remotely stop the process.
+DROPBOX_STATUS_FILE = f"{DROPBOX_DIR}/keep_running.txt"
+
 
 PROJECT_DIR = Path(__file__).parents[1]
 LOCAL_FILE = str(PROJECT_DIR / "data" / DATA_FILE_NAME)
@@ -64,6 +71,36 @@ def get_datetime() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def check_if_dropbox_file_exists(dropbox_file: str) -> bool:
+    try:
+        dbx = dropbox.Dropbox(
+            app_key=config["DROPBOX_APP_KEY"],
+            app_secret=config["DROPBOX_APP_SECRET"],
+            oauth2_refresh_token=config["DROPBOX_REFRESH_TOKEN"],
+        )
+        _ = dbx.files_get_metadata(dropbox_file)
+        return True
+
+    except Exception as e:
+        # pylint: disable=no-member
+        if isinstance(e, dropbox.exceptions.ApiError) and isinstance(e.error, dropbox.files.GetMetadataError):
+            return False
+
+        logger.error(f"Failed to check whether {dropbox_file} exists: {e}")
+        logger.error(f"\n{traceback.format_exc()}")
+        return False
+
+
+def check_whether_to_run() -> bool:
+    keep_running = check_if_dropbox_file_exists(DROPBOX_STATUS_FILE)
+    if keep_running:
+        logger.info(f"Found {DROPBOX_STATUS_FILE}; will continue")
+    else:
+        logger.info(f"Did not find {DROPBOX_STATUS_FILE}; exiting")
+
+    return keep_running
+
+
 def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
     logger.info(f"Saving test results to {local_file}")
 
@@ -91,13 +128,21 @@ def update_dropbox_file(data: str, local_file: str, dropbox_file: str):
         logger.error(f"\n{traceback.format_exc()}")
 
 
-if __name__ == "__main__":
+def main():
     setup_logger()
+    if not check_whether_to_run():
+        logger.info("Done!\n")
+        return
+
     ip = get_my_ip()
     ip_info = get_ip_info(ip)
     cur_time = get_datetime()
     test_results = get_speed()
     data = f"{cur_time}  |  {ip}  |  {ip_info}  |  {test_results}\n"
     logger.info(f"Saving the following data: {data.strip()}")
-    update_dropbox_file(data, LOCAL_FILE, DROPBOX_FILE)
+    update_dropbox_file(data, LOCAL_FILE, DROPBOX_DATA_FILE)
     logger.info("Done!\n")
+
+
+if __name__ == "__main__":
+    main()
